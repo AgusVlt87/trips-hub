@@ -8,9 +8,7 @@ import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { CityKey, RouteSegment, TransportMode } from '../types';
-import { CITIES } from '../data';
-import { calcTransportStats, totalKm } from '../utils';
+import type { CityKey, CityMap, RouteSegment, TransportMode, POI } from '../types';
 
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -25,12 +23,14 @@ const MODE_META: Record<TransportMode, { color: string; dash: string; icon: stri
   Auto:  { color: '#426038', dash: '',     icon: '🚗' },
   Bus:   { color: '#B84E14', dash: '6,4',  icon: '🚌' },
   Vuelo: { color: '#0F5694', dash: '4,6',  icon: '✈️' },
+  Ferry: { color: '#0891B2', dash: '5,5',  icon: '⛴️' },
+  Metro: { color: '#9333EA', dash: '',     icon: '🚇' },
 };
 
-const ALL_MODES: TransportMode[] = ['AVE', 'Tren', 'Bus', 'Auto', 'Vuelo'];
+const ALL_MODES: TransportMode[] = ['AVE', 'Tren', 'Bus', 'Auto', 'Vuelo', 'Ferry', 'Metro'];
 
-function cityMarkerHtml(city: CityKey, order: number, isSelected: boolean, nights: number): string {
-  const c = CITIES[city];
+function cityMarkerHtml(city: CityKey, order: number, isSelected: boolean, nights: number, cities: CityMap): string {
+  const c = cities[city];
   const size = isSelected ? 52 : 42;
   return `
     <div style="
@@ -83,11 +83,11 @@ function lineAngleDeg(a: [number, number], b: [number, number]): number {
 }
 
 // ─── Sortable city row ────────────────────────────────────────────────────────
-function SortableCityRow({ cityKey, order, isSelected, nights, onClick }: {
-  cityKey: CityKey; order: number; isSelected: boolean; nights: number; onClick: () => void;
+function SortableCityRow({ cityKey, order, isSelected, nights, onClick, cities }: {
+  cityKey: CityKey; order: number; isSelected: boolean; nights: number; onClick: () => void; cities: CityMap;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: cityKey });
-  const c = CITIES[cityKey];
+  const c = cities[cityKey];
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }} className="flex items-center gap-1.5">
       <button {...attributes} {...listeners} className="flex-shrink-0 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing text-[14px] px-0.5 touch-none" title="Arrastrar para reordenar">⠿</button>
@@ -103,21 +103,24 @@ function SortableCityRow({ cityKey, order, isSelected, nights, onClick }: {
 }
 
 interface Props {
+  cities: CityMap;
   cityOrder: CityKey[];
   cityNights: Record<CityKey, number>;
+  pois?: POI[];
+  onTogglePOI?: (id: string) => void;
   segments: RouteSegment[];
   onReorder: (newOrder: CityKey[]) => void;
   onUpdateSegment: (idx: number, patch: Partial<RouteSegment>) => void;
 }
 
-export default function MapTab({ cityOrder, cityNights, segments, onReorder, onUpdateSegment }: Props) {
+export default function MapTab({ cities, cityOrder, cityNights, segments, onReorder, onUpdateSegment }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletRef = useRef<L.Map | null>(null);
   const layersRef = useRef<L.Layer[]>([]);
   const [selectedCity, setSelectedCity] = useState<CityKey | null>(null);
   const [editingSegIdx, setEditingSegIdx] = useState<number | null>(null);
   const [coords, setCoords] = useState<Record<string, [number, number]>>(
-    Object.fromEntries(Object.entries(CITIES).map(([k, c]) => [k, c.coord]))
+    Object.fromEntries(Object.entries(cities).map(([k, c]) => [k, c.coord]))
   );
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -139,8 +142,7 @@ export default function MapTab({ cityOrder, cityNights, segments, onReorder, onU
       attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       maxZoom: 18,
     }).addTo(map);
-    // Fit to all segment endpoints so Madrid→Sevilla is always visible
-    const allCoords = Object.values(CITIES).map(c => c.coord as L.LatLngTuple);
+    const allCoords = Object.values(cities).map((c) => c.coord as L.LatLngTuple);
     map.fitBounds(L.latLngBounds(allCoords), { padding: [40, 40] });
     leafletRef.current = map;
     return () => { map.remove(); leafletRef.current = null; };
@@ -184,13 +186,14 @@ export default function MapTab({ cityOrder, cityNights, segments, onReorder, onU
 
     cityOrder.forEach((cityKey, idx) => {
       citiesInRoute.delete(cityKey); // will be handled with stay order below
-      const c = CITIES[cityKey];
+      const c = cities[cityKey];
+      if (!c) return;
       const isSelected = selectedCity === cityKey;
       const nights = cityNights[cityKey] ?? 1;
       const size = isSelected ? 52 : 42;
 
       const marker = L.marker(coords[cityKey] ?? c.coord, {
-        icon: L.divIcon({ html: cityMarkerHtml(cityKey, idx + 1, isSelected, nights), className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2] }),
+        icon: L.divIcon({ html: cityMarkerHtml(cityKey, idx + 1, isSelected, nights, cities), className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2] }),
         draggable: true, zIndexOffset: isSelected ? 1000 : 500,
       });
       marker.bindPopup(`<div style="font-family:'DM Sans',sans-serif;min-width:140px;padding:2px"><div style="font-weight:700;font-size:14px;color:${c.bg};margin-bottom:4px">${idx + 1}. ${c.label}</div><div style="font-size:12px;color:#666">${nights} noche${nights !== 1 ? 's' : ''}</div></div>`);
@@ -202,28 +205,34 @@ export default function MapTab({ cityOrder, cityNights, segments, onReorder, onU
       addLayer(marker);
     });
 
-    // Madrid marker (start/end hub, not in cityOrder stays)
-    if (citiesInRoute.has('madrid') && coords['madrid']) {
-      const c = CITIES['madrid' as CityKey];
-      const size = selectedCity === 'madrid' ? 52 : 42;
-      const marker = L.marker(coords['madrid'], {
+    // Hub markers — cities in segments but not in cityOrder (e.g. origin airport city)
+    citiesInRoute.forEach(cityKey => {
+      const c = cities[cityKey];
+      if (!c || !coords[cityKey]) return;
+      const size = 38;
+      const short = c.label.slice(0, 3).toUpperCase();
+      const marker = L.marker(coords[cityKey], {
         icon: L.divIcon({
-          html: `<div style="width:${size}px;height:${size}px;background:${c.bg};border:3px solid rgba(255,255,255,0.8);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,0,0,0.25);cursor:pointer;"><div style="color:#fff;font-size:8px;font-weight:800;">MAD</div><div style="color:rgba(255,255,255,0.7);font-size:7px;">✈</div></div>`,
+          html: `<div style="width:${size}px;height:${size}px;background:${c.bg};border:3px solid rgba(255,255,255,0.8);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,0.25);cursor:pointer;"><div style="color:#fff;font-size:7px;font-weight:800;line-height:1">${short}</div><div style="color:rgba(255,255,255,0.7);font-size:6px;">✈</div></div>`,
           className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2],
         }),
-        draggable: true, zIndexOffset: 500,
+        draggable: true, zIndexOffset: 400,
       });
-      marker.bindPopup(`<div style="font-family:'DM Sans',sans-serif;padding:2px"><div style="font-weight:700;font-size:14px;color:${c.bg}">Madrid</div><div style="font-size:12px;color:#666">Llegada / Salida</div></div>`);
-      marker.on('dragend', (e: L.LeafletEvent) => {
-        const ll = (e.target as L.Marker).getLatLng();
-        setCoords(prev => ({ ...prev, madrid: [ll.lat, ll.lng] }));
-      });
+      marker.bindPopup(`<div style="font-family:sans-serif;padding:2px"><div style="font-weight:700;font-size:14px;color:${c.bg}">${c.label}</div><div style="font-size:12px;color:#666">Llegada / Salida</div></div>`);
       addLayer(marker);
-    }
-  }, [coords, selectedCity, cityOrder, cityNights, segments]);
+    });
+  }, [coords, selectedCity, cityOrder, cityNights, segments, cities]);
 
-  const stats = calcTransportStats(cityOrder);
-  const total = totalKm(cityOrder);
+  const stats = (() => {
+    const acc: Record<string, { mode: TransportMode; km: number; segments: number }> = {};
+    segments.forEach(seg => {
+      if (!acc[seg.mode]) acc[seg.mode] = { mode: seg.mode, km: 0, segments: 0 };
+      acc[seg.mode].km += seg.distanceKm;
+      acc[seg.mode].segments += 1;
+    });
+    return Object.values(acc).sort((a, b) => b.km - a.km);
+  })();
+  const total = segments.reduce((s, seg) => s + seg.distanceKm, 0);
 
   return (
     <div className="flex flex-col md:flex-row gap-4 py-4">
@@ -232,7 +241,7 @@ export default function MapTab({ cityOrder, cityNights, segments, onReorder, onU
         <div ref={mapRef} className="flex-1 min-h-[300px] md:min-h-[460px] rounded-xl shadow-md" style={{ zIndex: 0 }} />
 
         <button
-          onClick={() => setCoords(Object.fromEntries(Object.entries(CITIES).map(([k, c]) => [k, c.coord])))}
+          onClick={() => setCoords(Object.fromEntries(Object.entries(cities).map(([k, c]) => [k, c.coord])))}
           className="absolute top-3 right-3 z-[400] bg-white/90 border border-gray-200 rounded-lg px-3 py-1.5 text-[11px] font-semibold text-gray-600 shadow hover:bg-white transition backdrop-blur"
         >
           ↺ Reset posiciones
@@ -279,8 +288,8 @@ export default function MapTab({ cityOrder, cityNights, segments, onReorder, onU
           <div className="flex flex-col gap-1">
             {segments.map((seg, i) => {
               const m = MODE_META[seg.mode] ?? MODE_META.Auto;
-              const fromLabel = CITIES[seg.from as CityKey]?.label ?? seg.from;
-              const toLabel = CITIES[seg.to as CityKey]?.label ?? seg.to;
+              const fromLabel = cities[seg.from]?.label ?? seg.from;
+              const toLabel = cities[seg.to]?.label ?? seg.to;
               const isEditing = editingSegIdx === i;
 
               return (
@@ -386,18 +395,18 @@ export default function MapTab({ cityOrder, cityNights, segments, onReorder, onU
           <SortableContext items={cityOrder} strategy={verticalListSortingStrategy}>
             <div className="flex flex-col gap-1.5">
               {cityOrder.map((cityKey, idx) => (
-                <SortableCityRow key={cityKey} cityKey={cityKey} order={idx + 1} isSelected={selectedCity === cityKey} nights={cityNights[cityKey] ?? 1} onClick={() => setSelectedCity(k => k === cityKey ? null : cityKey)} />
+                <SortableCityRow key={cityKey} cityKey={cityKey} order={idx + 1} isSelected={selectedCity === cityKey} nights={cityNights[cityKey] ?? 1} onClick={() => setSelectedCity(k => k === cityKey ? null : cityKey)} cities={cities} />
               ))}
             </div>
           </SortableContext>
         </DndContext>
 
-        {selectedCity && CITIES[selectedCity] && (
-          <div className="rounded-xl p-3 text-white text-[11px] leading-relaxed" style={{ background: CITIES[selectedCity].bg }}>
-            <div className="font-bold text-[13px] mb-1">{CITIES[selectedCity].label}</div>
+        {selectedCity && cities[selectedCity] && (
+          <div className="rounded-xl p-3 text-white text-[11px] leading-relaxed" style={{ background: cities[selectedCity].bg }}>
+            <div className="font-bold text-[13px] mb-1">{cities[selectedCity].label}</div>
             <div className="opacity-70">
-              {(coords[selectedCity] ?? CITIES[selectedCity].coord)[0].toFixed(4)}°N<br />
-              {Math.abs((coords[selectedCity] ?? CITIES[selectedCity].coord)[1]).toFixed(4)}°O
+              {(coords[selectedCity] ?? cities[selectedCity].coord)[0].toFixed(4)}°N<br />
+              {Math.abs((coords[selectedCity] ?? cities[selectedCity].coord)[1]).toFixed(4)}°O
             </div>
             <div className="mt-1.5 opacity-80 text-[10px]">Arrastrá el marcador en el mapa para mover la ciudad</div>
           </div>

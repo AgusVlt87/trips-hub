@@ -6,10 +6,10 @@ import {
 } from './trip.config';
 import type {
   TripDay, CityKey, BudgetState, TripConfig,
-  POI, PackingCategory, Gasto, WalletItem, ExchangeRates,
+  POI, Gasto, WalletItem,
   TripLink, RouteSegment,
 } from './types';
-import { reconcileDays, generateDays, daysUntilTrip, currentTripDayIndex, totalProgress, totalNights } from './utils';
+import { generateDays, daysUntilTrip, currentTripDayIndex, totalProgress, totalNights } from './utils';
 import { useSyncedKey, setTripCode, setAuthor, touchTripMeta } from './lib/useSync';
 
 import ItineraryTab from './components/ItineraryTab';
@@ -26,30 +26,6 @@ const CITY_ORDER: CityKey[] = Object.entries(CITIES)
   .sort(([, a], [, b]) => a.order - b.order)
   .map(([k]) => k);
 
-const INIT_PACKING: PackingCategory[] = [
-  { id: 'docs', label: 'Documentos', items: [
-    { id: 'p1', label: 'Pasaporte (vigencia +6 meses)', checked: false },
-    { id: 'p2', label: 'Seguro de viaje', checked: false },
-    { id: 'p3', label: 'Reservas de alojamiento (offline)', checked: false },
-    { id: 'p4', label: 'Tarjeta de crédito internacional', checked: false },
-    { id: 'p5', label: 'Efectivo en moneda local', checked: false },
-  ]},
-  { id: 'ropa', label: 'Ropa', items: [
-    { id: 'r1', label: 'Camisetas', checked: false },
-    { id: 'r2', label: 'Pantalones / shorts', checked: false },
-    { id: 'r3', label: 'Calzado cómodo para caminar', checked: false },
-    { id: 'r4', label: 'Abrigo / impermeable', checked: false },
-  ]},
-  { id: 'tech', label: 'Tecnología', items: [
-    { id: 't1', label: 'Cargador universal / adaptador', checked: false },
-    { id: 't2', label: 'Power bank', checked: false },
-    { id: 't3', label: 'Auriculares', checked: false },
-  ]},
-];
-
-const INIT_RATES: ExchangeRates = {
-  eurToLocal: 1, localCurrencyCode: 'EUR', eurToUsd: 1.08, updatedAt: '',
-};
 
 const TABS = [
   { id: 'itinerary', label: 'Itinerario',  icon: '📅' },
@@ -92,10 +68,8 @@ export default function App() {
   const [checked, setChecked] = useSynced<Record<string, boolean>>('th-checked', {});
   const [cityOrder, setCityOrder] = useSynced<CityKey[]>('th-city-order', CITY_ORDER);
   const [pois, setPOIs]       = useSynced<POI[]>('th-pois', DEFAULT_POIS);
-  const [, setPacking]        = useSynced<PackingCategory[]>('th-packing', INIT_PACKING);
   const [gastos, setGastos]   = useSynced<Gasto[]>('th-gastos', []);
   const [wallet, setWallet]   = useSynced<WalletItem[]>('th-wallet', []);
-  const [rates]               = useSynced<ExchangeRates>('th-rates', INIT_RATES);
   const [links, setLinks]     = useSynced<TripLink[]>('th-links', DEFAULT_LINKS);
   const [segments, setSegments] = useSynced<RouteSegment[]>('th-segments', ROUTE_SEGMENTS);
   const [budget, setBudget]   = useSynced<BudgetState>('th-budget', INIT_BUDGET);
@@ -124,11 +98,19 @@ export default function App() {
   const updateSegment  = (idx: number, patch: Partial<RouteSegment>) =>
     setSegments(prev => prev.map((s, i) => i === idx ? { ...s, ...patch } : s));
 
-  const addGasto    = (g: Gasto)              => setGastos(prev => [...prev, g]);
+  const addGasto    = (g: Omit<Gasto,'id'>)   => setGastos(prev => [...prev, { ...g, id: `g-${Date.now()}` }]);
   const deleteGasto = (id: string)            => setGastos(prev => prev.filter(g => g.id !== id));
   const addLink     = (l: Omit<TripLink,'id'>) => setLinks(prev => [...prev, { ...l, id: `lnk-${Date.now()}` }]);
   const deleteLink  = (id: string)            => setLinks(prev => prev.filter(l => l.id !== id));
-  const togglePOI   = (id: string)            => setPOIs(prev => prev.map(p => p.id === id ? { ...p, visited: !p.visited } : p));
+
+  const toggleCheck     = (dayN: number, idx: number) =>
+    setChecked(prev => ({ ...prev, [`${dayN}-${idx}`]: !prev[`${dayN}-${idx}`] }));
+  const updateActivity  = (dayN: number, idx: number, val: string) =>
+    setDays(prev => prev.map(d => d.n === dayN ? { ...d, activities: d.activities.map((a, i) => i === idx ? val : a) } : d));
+  const deleteActivity  = (dayN: number, idx: number) =>
+    setDays(prev => prev.map(d => d.n === dayN ? { ...d, activities: d.activities.filter((_, i) => i !== idx) } : d));
+  const addActivity     = (dayN: number) =>
+    setDays(prev => prev.map(d => d.n === dayN ? { ...d, activities: [...d.activities, ''] } : d));
 
   const firstCity  = CITIES[cityOrder[0]];
   const headerBg   = firstCity?.bg ?? '#1A2650';
@@ -151,7 +133,7 @@ export default function App() {
             <div>{cityOrder.length} destinos · {totalNightsCount} noches</div>
             {daysLeft > 0
               ? <div>{daysLeft}d para el viaje</div>
-              : todayDayIndex >= 0
+              : todayDayIndex != null && todayDayIndex >= 0
               ? <div className="text-green-300 font-semibold">Día {todayDayIndex + 1} ✈</div>
               : <div>Viaje finalizado</div>}
           </div>
@@ -173,9 +155,12 @@ export default function App() {
           <ItineraryTab
             days={days}
             checked={checked}
-            onToggle={(id) => setChecked(prev => ({ ...prev, [id]: !prev[id] }))}
-            cities={CITIES}
-            cityOrder={cityOrder}
+            todayDayIndex={todayDayIndex}
+            onToggleCheck={toggleCheck}
+            onUpdateActivity={updateActivity}
+            onDeleteActivity={deleteActivity}
+            onAddActivity={addActivity}
+            onReorderDays={setDays}
           />
         )}
         {tab === 'map' && (
@@ -184,7 +169,7 @@ export default function App() {
             cityOrder={cityOrder}
             cityNights={config.cityNights}
             pois={pois}
-            onTogglePOI={togglePOI}
+            onTogglePOI={(id) => setPOIs(prev => prev.map(p => p.id === id ? { ...p, visited: !p.visited } : p))}
             segments={segments}
             onReorder={setCityOrder}
             onUpdateSegment={updateSegment}
@@ -195,18 +180,32 @@ export default function App() {
         )}
         {tab === 'gastos' && (
           <GastosTab
-            gastos={gastos} cities={CITIES} cityOrder={cityOrder}
-            rates={rates} onAdd={addGasto} onDelete={deleteGasto}
+            gastos={gastos}
+            budget={budget}
+            config={config}
+            cityOrder={cityOrder}
+            onAdd={addGasto}
+            onDelete={deleteGasto}
           />
         )}
         {tab === 'wallet' && (
-          <WalletTab items={wallet} onChange={setWallet} />
+          <WalletTab
+            wallet={wallet}
+            cities={CITIES}
+            cityOrder={cityOrder}
+            onUpdate={(id, patch) => setWallet(prev => prev.map(w => w.id === id ? { ...w, ...patch } : w))}
+            onAdd={item => setWallet(prev => [...prev, { ...item, id: `w-${Date.now()}` }])}
+            onDelete={id => setWallet(prev => prev.filter(w => w.id !== id))}
+          />
         )}
         {tab === 'bookings' && (
-          <BookingsTab booked={booked} onToggle={(id) => setBooked(prev => ({ ...prev, [id]: !prev[id] }))} cities={CITIES} />
+          <BookingsTab booked={booked} onToggle={(id) => setBooked(prev => ({ ...prev, [id]: !prev[id] }))} />
         )}
         {tab === 'budget' && (
-          <BudgetTab budget={budget} onChange={setBudget} cityOrder={cityOrder} cities={CITIES} />
+          <BudgetTab
+            budget={budget}
+            onUpdate={(city, field, value) => setBudget(prev => ({ ...prev, [city]: { ...prev[city], [field]: value } }))}
+          />
         )}
       </main>
 

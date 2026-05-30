@@ -1,6 +1,5 @@
 import { useState, useRef } from 'react';
 import type { WalletItem, WalletSection, CityKey } from '../types';
-import { CITIES, CITY_ORDER } from '../data';
 
 const SECTION_META: Record<WalletSection, { icon: string; color: string }> = {
   Vuelos:       { icon: '✈️',  color: '#1A2650' },
@@ -14,8 +13,12 @@ const SECTION_META: Record<WalletSection, { icon: string; color: string }> = {
 
 const SECTIONS: WalletSection[] = ['Vuelos','Alojamientos','Transportes','Actividades','Documentos','Emergencias','Contactos'];
 
+import type { CityMap } from '../types';
+
 interface Props {
   wallet: WalletItem[];
+  cities?: CityMap;
+  cityOrder?: CityKey[];
   onUpdate: (id: string, patch: Partial<WalletItem>) => void;
   onAdd: (item: Omit<WalletItem, 'id'>) => void;
   onDelete: (id: string) => void;
@@ -38,7 +41,7 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function WalletRow({ item, onUpdate, onDelete }: { item: WalletItem; onUpdate: (p: Partial<WalletItem>) => void; onDelete: () => void }) {
+function WalletRow({ item, cities = {}, onUpdate, onDelete }: { item: WalletItem; cities?: CityMap; onUpdate: (p: Partial<WalletItem>) => void; onDelete: () => void }) {
   const [hidden, setHidden] = useState(item.secret ?? false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(item.value);
@@ -82,9 +85,9 @@ function WalletRow({ item, onUpdate, onDelete }: { item: WalletItem; onUpdate: (
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-0.5">
               <span className="text-[11px] text-gray-500">{item.label}</span>
-              {item.city && (
-                <span className="text-[9px] font-semibold rounded-full px-1.5 py-0.5" style={{ background: CITIES[item.city].soft, color: CITIES[item.city].bg }}>
-                  {CITIES[item.city].label}
+              {item.city && cities[item.city] && (
+                <span className="text-[9px] font-semibold rounded-full px-1.5 py-0.5" style={{ background: cities[item.city].soft, color: cities[item.city].bg }}>
+                  {cities[item.city].label}
                 </span>
               )}
             </div>
@@ -120,7 +123,7 @@ function WalletRow({ item, onUpdate, onDelete }: { item: WalletItem; onUpdate: (
   );
 }
 
-export default function WalletTab({ wallet, onUpdate, onAdd, onDelete }: Props) {
+export default function WalletTab({ wallet, cities = {}, cityOrder = [], onUpdate, onAdd, onDelete }: Props) {
   const [openSection, setOpenSection] = useState<WalletSection | null>('Vuelos');
   const [addingTo, setAddingTo] = useState<WalletSection | null>(null);
   const [newForm, setNewForm] = useState({ label: '', value: '', notes: '', city: '' as CityKey | '', secret: false });
@@ -216,6 +219,7 @@ export default function WalletTab({ wallet, onUpdate, onAdd, onDelete }: Props) 
                     <WalletRow
                       key={item.id}
                       item={item}
+                      cities={cities}
                       onUpdate={patch => onUpdate(item.id, patch)}
                       onDelete={() => onDelete(item.id)}
                     />
@@ -252,7 +256,7 @@ export default function WalletTab({ wallet, onUpdate, onAdd, onDelete }: Props) 
                           className="border border-gray-200 rounded-lg px-2 py-1.5 text-[11px] outline-none bg-white"
                         >
                           <option value="">Sin ciudad</option>
-                          {CITY_ORDER.map(k => <option key={k} value={k}>{CITIES[k].label}</option>)}
+                          {cityOrder.map((k: CityKey) => <option key={k} value={k}>{cities[k]?.label ?? k}</option>)}
                         </select>
                         <label className="flex items-center gap-1.5 text-[11px] text-gray-500 cursor-pointer">
                           <input type="checkbox" checked={newForm.secret} onChange={e => setNewForm(f => ({ ...f, secret: e.target.checked }))} />

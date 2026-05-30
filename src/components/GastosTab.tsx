@@ -358,13 +358,13 @@ export default function GastosTab({ gastos, budget, config, cityOrder, onAdd, on
                 <Tooltip formatter={(v) => [`€${Number(v).toFixed(0)}`, '']} contentStyle={{ fontSize: 11, borderRadius: 6 }} />
                 <Bar dataKey="presup" name="Presupuesto" fill="#E2E8F0" radius={[3, 3, 0, 0]} />
                 <Bar dataKey="real" name="Real" radius={[3, 3, 0, 0]}>
-                  {cityChartData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                  {cityChartData.map((entry: { color: string }, i: number) => <Cell key={i} fill={entry.color} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
           <div className="flex flex-col gap-2">
-            {CITY_ORDER.map(k => {
+            {CITY_ORDER.map((k: string) => {
               const c = CITIES[k];
               const real = byCity[k] ?? 0;
               const est = budgetCityEstimate(budget[k]);

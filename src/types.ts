@@ -126,3 +126,12 @@ export type CityRecommendation = {
 };
 
 export type RecommendationsState = Record<CityKey, CityRecommendation>;
+
+export interface Booking {
+  id: string;
+  city: CityKey;
+  urgent: boolean;
+  label: string;
+  url: string;
+  note: string;
+}

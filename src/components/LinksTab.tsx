@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import type { TripLink, LinkCategory, CityKey } from '../types';
-import { CITIES, CITY_ORDER } from '../data';
+import type { TripLink, LinkCategory, CityKey, CityMap } from '../types';
 
 const CATEGORIES: Record<LinkCategory, { icon: string; label: string }> = {
   airbnb:  { icon: '🏠', label: 'Airbnb' },
@@ -11,17 +10,19 @@ const CATEGORIES: Record<LinkCategory, { icon: string; label: string }> = {
   otro:    { icon: '🔗', label: 'Otro' },
 };
 
-const EMPTY_FORM = { city: 'sevilla' as CityKey, title: '', url: '', category: 'otro' as LinkCategory };
+const EMPTY_FORM = { city: '' as CityKey, title: '', url: '', category: 'otro' as LinkCategory };
 
 interface Props {
   links: TripLink[];
+  cities: CityMap;
   onAdd: (link: Omit<TripLink, 'id'>) => void;
   onDelete: (id: string) => void;
 }
 
-export default function LinksTab({ links, onAdd, onDelete }: Props) {
+export default function LinksTab({ links, cities, onAdd, onDelete }: Props) {
+  const CITY_ORDER = Object.entries(cities).sort(([,a],[,b]) => a.order - b.order).map(([k]) => k as CityKey);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState({ ...EMPTY_FORM, city: CITY_ORDER[0] ?? '' });
   const [filterCity, setFilterCity] = useState<CityKey | 'all'>('all');
 
   const submit = () => {
@@ -76,7 +77,7 @@ export default function LinksTab({ links, onAdd, onDelete }: Props) {
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#1A2650] bg-white"
               >
                 {CITY_ORDER.map(k => (
-                  <option key={k} value={k}>{CITIES[k].label}</option>
+                  <option key={k} value={k}>{cities[k].label}</option>
                 ))}
               </select>
             </div>
@@ -143,7 +144,7 @@ export default function LinksTab({ links, onAdd, onDelete }: Props) {
             Todas
           </button>
           {CITY_ORDER.filter(k => links.some(l => l.city === k)).map(k => {
-            const c = CITIES[k];
+            const c = cities[k];
             const active = filterCity === k;
             return (
               <button
@@ -175,7 +176,7 @@ export default function LinksTab({ links, onAdd, onDelete }: Props) {
           {CITY_ORDER.map(cityKey => {
             const cityLinks = byCity[cityKey];
             if (!cityLinks.length) return null;
-            const c = CITIES[cityKey];
+            const c = cities[cityKey];
             return (
               <div key={cityKey}>
                 <div
