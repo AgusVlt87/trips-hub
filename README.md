@@ -1,3 +1,12 @@
+Quiero un hub para mi viaje por Estados Unidos: 
+Viajo con mi pareja, ambos 50 años. 4ta vez que vamos a ese país. 
+Vamos a ir del 19/11 saliendo de EZE 21:20hs llegando a JFK a las 6am del siguiente día. Y volvemos el 06/12 a las 21 de allá, llegando a EZE el día siguiente.  
+
+Destinos:
+Philadelphia
+Boston
+New York
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
