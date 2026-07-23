@@ -21,6 +21,7 @@ import LinksTab     from './components/LinksTab';
 import BookingsTab  from './components/BookingsTab';
 import BottomNav    from './components/BottomNav';
 import SyncPanel, { SyncStatusPill } from './components/SyncPanel';
+import TripWizard   from './components/TripWizard';
 
 const CITY_ORDER: CityKey[] = Object.entries(CITIES)
   .sort(([, a], [, b]) => a.order - b.order)
@@ -55,12 +56,18 @@ function useSynced<T>(key: string, initial: T) {
 export default function App() {
   const [tab, setTab]         = useState<TabId>('itinerary');
   const [syncOpen, setSyncOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   useEffect(() => {
     const code   = localStorage.getItem('th-trip-code');
     const author = localStorage.getItem('th-author');
     if (code)   setTripCode(code);
     if (author) setAuthor(author);
+    // Abrir el asistente automáticamente en la primera visita
+    if (!localStorage.getItem('th-wizard-seen')) {
+      setWizardOpen(true);
+      localStorage.setItem('th-wizard-seen', '1');
+    }
   }, []);
 
   const [config]              = useSynced<TripConfig>('th-config', INIT_CONFIG);
@@ -209,8 +216,18 @@ export default function App() {
         )}
       </main>
 
+      {/* Botón flotante: reabrir el asistente de viaje */}
+      <button
+        onClick={() => setWizardOpen(true)}
+        className="fixed bottom-20 right-4 z-[50] flex items-center gap-2 rounded-full pl-3.5 pr-4 py-3 text-white text-[13px] font-bold shadow-lg transition-transform active:scale-95"
+        style={{ background: headerBg, boxShadow: `0 8px 20px ${headerBg}55` }}
+      >
+        <span className="text-[16px]">✨</span> Armar viaje
+      </button>
+
       <BottomNav tabs={TABS} active={tab} onChange={t => setTab(t as TabId)} />
       {syncOpen && <SyncPanel onClose={() => setSyncOpen(false)} />}
+      {wizardOpen && <TripWizard onClose={() => setWizardOpen(false)} />}
     </div>
   );
 }
